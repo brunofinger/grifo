@@ -1,0 +1,104 @@
+epic:
+  slug: primeira-versao
+  title: Primeira versão do Grifo
+tasks:
+  - key: T1
+    title: Renomear o app para Grifo e montar os testes do front-end
+    description: >
+      Seguir a seção "Identidade do app (T1)" e "Testes do front-end (T1)" do plan.md.
+      Em src-tauri/tauri.conf.json: package.productName "Grifo",
+      tauri.bundle.identifier "com.brunofinger.grifo", shortDescription "Grifo",
+      longDescription "Ações rápidas sobre o texto selecionado" e tauri.updater.active false.
+      Trocar "Pot"/"pot" visível ao usuário por "Grifo" no tooltip da bandeja (tray.rs) e no
+      título da janela de configurações (config_window em window.rs). Adicionar no topo do
+      README.md uma seção curta "Grifo" (uma frase + "Baseado no Pot, GPL-3.0") sem apagar o
+      resto. Instalar vitest, @testing-library/react, @testing-library/jest-dom e jsdom como
+      devDependencies, criar o script "test": "vitest run", configurar o bloco test no
+      vite.config.js e criar src/test/setup.js. NÃO renomear o crate Rust, pastas, ícones nem
+      arquivos de tradução; NÃO mexer em .github/.
+    acceptance:
+      - "`pnpm test` sai com código 0 e roda o teste src/test/appIdentity.test.js"
+      - "src/test/appIdentity.test.js verifica que tauri.conf.json tem productName \"Grifo\", identifier \"com.brunofinger.grifo\" e updater.active false"
+      - "`cargo test` em src-tauri sai com código 0"
+    depends_on: []
+    difficulty: normal
+
+  - key: T2
+    title: Módulo de ações em Rust (Traduzir, Maiúsculas, Minúsculas, Remover quebras, Pesquisar)
+    description: >
+      Criar src-tauri/src/actions.rs exatamente com os tipos, funções e regras da seção
+      "Módulo de ações (T2)" do plan.md: ActionKind, Action, ActionOutput (serde tag "type",
+      content "value"), default_actions() com as 5 ações na ordem indicada, run_action() pura
+      (sem abrir janelas nem navegador), remove_line_breaks(), search_url() usando
+      reqwest::Url::parse_with_params, e os comandos Tauri list_actions e execute_action
+      (este aplica os efeitos: abrir URL com tauri::api::shell::open e traduzir com
+      text_translate de window.rs). Registrar mod actions e os dois comandos em main.rs.
+      Testes unitários no próprio arquivo (#[cfg(test)]). NÃO criar arquivos de
+      configuração de ações nem tela de configuração.
+    acceptance:
+      - "default_actions() devolve 5 ações com as chaves translate, uppercase, lowercase, remove_line_breaks, web_search, nessa ordem"
+      - "run_action(\"uppercase\", \"ação rápida\") devolve Ok(ActionOutput::Text(\"AÇÃO RÁPIDA\"))"
+      - "run_action(\"lowercase\", \"AÇÃO\") devolve Ok(ActionOutput::Text(\"ação\"))"
+      - "run_action(\"remove_line_breaks\", \"linha um\\r\\nlinha  dois\\nfim \") devolve Ok(ActionOutput::Text(\"linha um linha dois fim\"))"
+      - "run_action(\"web_search\", \"fibra & saúde\") devolve Ok(ActionOutput::OpenUrl(url)) com url começando por https://www.google.com/search?q= e com o texto codificado (sem espaço nem & literais)"
+      - "run_action(\"translate\", \"hello\") devolve Ok(ActionOutput::Translate(\"hello\"))"
+      - "run_action(\"uppercase\", \"   \") devolve Err(\"Nenhum texto selecionado\")"
+      - "run_action(\"xyz\", \"a\") devolve Err(\"Ação desconhecida: xyz\")"
+      - "serde_json::to_value(ActionOutput::Text(\"A\")) é {\"type\":\"text\",\"value\":\"A\"}"
+      - "`cargo test` em src-tauri sai com código 0"
+    depends_on: [T1]
+    difficulty: normal
+
+  - key: T3
+    title: Janela da paleta de comandos com atalho Ctrl+Alt+Espaço, busca e navegação
+    description: >
+      Seguir a seção "Janela da paleta (T3)" do plan.md. Back-end: palette_window() em
+      window.rs (lê selection::get_text() antes de mostrar a janela, guarda em
+      PaletteText(Mutex<String>), cria a janela "palette" 560x440 sempre no topo e fora da
+      barra de tarefas, emite palette_text), comando get_palette_text, atalho com nome de
+      config hotkey_palette e padrão "CommandOrControl+Alt+Space" gravado na primeira
+      execução, registrado em register_shortcut("all") e aceito em
+      register_shortcut_by_frontend. Campo "Paleta de comandos" na página
+      src/window/Config/pages/Hotkey/. Front-end: src/window/Palette/filter.js
+      (normalize, filterActions) e src/window/Palette/index.jsx (estado "lista": busca com
+      foco automático, faixa do texto selecionado, lista com o primeiro item destacado,
+      setas, Enter, clique, estado vazio e estado sem texto), registrado como "palette" no
+      windowMap de src/App.jsx. Nesta tarefa, executar uma ação só precisa chamar
+      invoke('execute_action', { key, text }); a exibição do resultado é a T4. Testes de
+      componente mockando @tauri-apps/api. Erros de selection::get_text viram texto vazio.
+    acceptance:
+      - "filterActions(acoes, '') devolve todas as ações na ordem original"
+      - "filterActions(acoes, 'MAIU') e filterActions(acoes, 'maiú') devolvem só a ação 'Maiúsculas'"
+      - "filterActions(acoes, 'navegador') devolve a ação 'Pesquisar no Google' (busca também na descrição)"
+      - "Palette renderiza o campo com placeholder 'Buscar ação…' e as 5 ações quando invoke('list_actions') devolve 5 ações"
+      - "Palette com texto selecionado de 80 caracteres mostra os primeiros 60 seguidos de '…' e '· 80 caracteres'"
+      - "Digitar 'xyz' na busca mostra 'Nenhuma ação encontrada para “xyz”'"
+      - "Pressionar seta para baixo e Enter chama invoke('execute_action', { key: 'uppercase', text: <texto selecionado> })"
+      - "Com texto selecionado vazio, a paleta mostra 'Nenhum texto selecionado' e Enter não chama execute_action"
+      - "src/App.jsx tem a chave 'palette' no windowMap"
+      - "`pnpm test` e `cargo test` saem com código 0"
+    depends_on: [T2]
+    difficulty: hard
+
+  - key: T4
+    title: Mostrar o resultado da ação na paleta, com Copiar e Voltar
+    description: >
+      Seguir a seção "Resultado na paleta (T4)" do plan.md, alterando
+      src/window/Palette/index.jsx (pode extrair src/window/Palette/Result.jsx). Resposta
+      { type: 'text' } → estado "resultado" com o nome da ação, o texto em pre-wrap e os
+      botões Copiar (writeText de @tauri-apps/api/clipboard; rótulo vira "Copiado" por 1,5 s)
+      e Voltar (volta para a lista com a busca limpa). Resposta { type: 'open_url' } ou
+      { type: 'translate' } → appWindow.close(). Erro → mensagem "Não foi possível executar:
+      <erro>" e a paleta continua aberta. Enquanto espera, o item mostra "Executando…" e
+      ignora novos cliques. NÃO implementar "Substituir" (colar no lugar da seleção).
+    acceptance:
+      - "Quando execute_action devolve { type: 'text', value: 'AÇÃO RÁPIDA' }, a paleta mostra o título 'Maiúsculas', o texto 'AÇÃO RÁPIDA' e os botões 'Copiar' e 'Voltar'"
+      - "Clicar em 'Copiar' chama writeText('AÇÃO RÁPIDA') e o botão passa a mostrar 'Copiado'"
+      - "Clicar em 'Voltar' mostra de novo a lista com as 5 ações e a busca vazia"
+      - "Quando execute_action devolve { type: 'open_url', value: 'https://www.google.com/search?q=x' }, appWindow.close() é chamado"
+      - "Quando execute_action devolve { type: 'translate', value: 'hello' }, appWindow.close() é chamado"
+      - "Quando execute_action rejeita com 'Ação desconhecida: xyz', a paleta mostra 'Não foi possível executar: Ação desconhecida: xyz' e não fecha"
+      - "Dois cliques seguidos numa ação chamam execute_action só uma vez"
+      - "`pnpm test` sai com código 0"
+    depends_on: [T3]
+    difficulty: normal
